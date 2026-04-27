@@ -1,0 +1,6 @@
+#!/bin/sh
+case "$1" in
+  post)
+    /usr/lib/asus-smart-charge/asus-smart-charge-helper enforce >/dev/null 2>&1
+    ;;
+esac

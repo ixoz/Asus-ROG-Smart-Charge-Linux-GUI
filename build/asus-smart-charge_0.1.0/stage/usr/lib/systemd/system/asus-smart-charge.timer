@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep Asus Smart Charge threshold in sync
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=1min
+Persistent=true
+Unit=asus-smart-charge.service
+
+[Install]
+WantedBy=timers.target

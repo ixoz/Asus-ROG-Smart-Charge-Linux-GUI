@@ -1,0 +1,7 @@
+#!/bin/sh
+set -e
+/usr/lib/asus-smart-charge/asus-smart-charge-helper bootstrap || true
+systemctl daemon-reload || true
+systemctl enable asus-smart-charge.service >/dev/null 2>&1 || true
+systemctl enable --now asus-smart-charge.timer >/dev/null 2>&1 || true
+systemctl restart asus-smart-charge.service >/dev/null 2>&1 || true
