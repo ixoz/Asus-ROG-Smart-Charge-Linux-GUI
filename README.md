@@ -1,4 +1,5 @@
 # Asus Smart Charge
+<img src="assets/img1.png" width="600">
 
 Ubuntu desktop app for managing Asus battery charge thresholds with:
 
