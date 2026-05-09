@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="assets/img1.png" width="700" alt="zhelper Linux GUI — Battery threshold, CPU clock, fan profile, GPU power, and keyboard RGB control for ASUS ROG laptops on Ubuntu, Fedora, and Arch Linux">
-</p>
+
 
 <h1 align="center">⚡ zhelper — ASUS Laptop Manager for Linux</h1>
 
