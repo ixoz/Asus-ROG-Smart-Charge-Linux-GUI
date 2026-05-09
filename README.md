@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/img1.png" width="700" alt="Asus Smart Charge Linux GUI — Battery threshold, CPU clock, fan profile, GPU power, and keyboard RGB control for ASUS ROG laptops on Ubuntu, Fedora, and Arch Linux">
+  <img src="assets/img1.png" width="700" alt="zhelper Linux GUI — Battery threshold, CPU clock, fan profile, GPU power, and keyboard RGB control for ASUS ROG laptops on Ubuntu, Fedora, and Arch Linux">
 </p>
 
-<h1 align="center">⚡ Asus Smart Charge — Linux GUI</h1>
+<h1 align="center">⚡ zhelper — ASUS Laptop Manager for Linux</h1>
 
 <p align="center">
   <strong>The all-in-one ASUS laptop management tool for Linux</strong><br>
@@ -14,14 +14,14 @@
   <a href="#-features"><img alt="Features" src="https://img.shields.io/badge/Features-purple?style=for-the-badge"></a>
   <a href="#-compatibility"><img alt="Compatibility" src="https://img.shields.io/badge/Compatibility-green?style=for-the-badge"></a>
   <img alt="Platform" src="https://img.shields.io/badge/Platform-Linux-informational?style=for-the-badge&logo=linux&logoColor=white">
-  <img alt="License" src="https://img.shields.io/badge/License-Proprietary-lightgrey?style=for-the-badge">
+  <img alt="License" src="https://img.shields.io/badge/License-GPL--3.0-blue?style=for-the-badge">
 </p>
 
 ---
 
-## 🔍 What Is Asus Smart Charge?
+## 🔍 What Is zhelper?
 
-**Asus Smart Charge** is a free, native **Linux desktop application** that gives you full control over your **ASUS ROG, TUF, Vivobook, Zenbook, and ProArt** laptop hardware — directly from a modern GTK4 + libadwaita GUI. No more terminal commands, no Windows-only MyASUS, and no need for multiple fragmented tools.
+**zhelper** is a free, open-source, native **Linux desktop application** that gives you full control over your **ASUS ROG, TUF, Vivobook, Zenbook, and ProArt** laptop hardware — directly from a modern GTK4 + libadwaita GUI. No more terminal commands, no Windows-only MyASUS, and no need for multiple fragmented tools.
 
 If you own an ASUS laptop running **Ubuntu, Linux Mint, Pop!_OS, Fedora, Arch Linux, Manjaro, openSUSE**, or any systemd-based distro, this app is built for you.
 
@@ -36,7 +36,7 @@ ASUS laptops on Linux have always lacked the official software that Windows user
 - ❌ No toggle for the NVIDIA discrete GPU to save power
 - ❌ Settings reset after every reboot or suspend/resume
 
-**Asus Smart Charge solves all of these** in one lightweight, native application that persists your settings across reboots, suspend cycles, and lid open/close events.
+**zhelper solves all of these** in one lightweight, native application that persists your settings across reboots, suspend cycles, and lid open/close events.
 
 ---
 
@@ -109,7 +109,7 @@ Unlike manual sysfs tweaks that vanish on reboot:
 
 ### Supported Linux Distributions
 
-Asus Smart Charge works on any modern Linux distribution with systemd, GTK4, and libadwaita:
+zhelper works on any modern Linux distribution with systemd, GTK4, and libadwaita:
 
 | Distribution | Package Format | Status |
 |--------------|---------------|--------|
@@ -223,7 +223,7 @@ The installer automatically:
 
 ### Launch the App
 
-After installation, search for **"Asus Smart Charge"** in your desktop application launcher — or run from a terminal:
+After installation, search for **"zhelper"** in your desktop application launcher — or run from a terminal:
 
 ```bash
 asus-smart-charge
@@ -315,7 +315,7 @@ PYTHONPATH=src sudo -E python3 bin/asus-smart-charge-helper enforce
 ### Project Structure
 
 ```
-AsusSmartCharge/
+zhelper/
 ├── bin/
 │   ├── asus-smart-charge            # GUI entry point
 │   └── asus-smart-charge-helper     # Privileged helper CLI
@@ -361,9 +361,9 @@ If an optional tool is missing, the script prints a warning and skips only that 
 ## ❓ Frequently Asked Questions
 
 <details>
-<summary><strong>Does this replace asusctl / asus-linux?</strong></summary>
+<summary><strong>Does zhelper replace asusctl / asus-linux?</strong></summary>
 
-Asus Smart Charge is a standalone tool — it does **not** depend on or conflict with `asusctl` or the asus-linux project. It talks directly to the same kernel sysfs interfaces. You can use both side by side, though running two tools that write to the same sysfs paths simultaneously may cause conflicts.
+zhelper is a standalone tool — it does **not** depend on or conflict with `asusctl` or the asus-linux project. It talks directly to the same kernel sysfs interfaces. You can use both side by side, though running two tools that write to the same sysfs paths simultaneously may cause conflicts.
 </details>
 
 <details>
@@ -385,7 +385,7 @@ Yes. The systemd service re-applies your saved settings 20 seconds after boot, a
 </details>
 
 <details>
-<summary><strong>Can I run this on a non-ASUS laptop?</strong></summary>
+<summary><strong>Can I run zhelper on a non-ASUS laptop?</strong></summary>
 
 No. The app depends on ASUS-specific kernel drivers (`asus-nb-wmi`, `asus-wmi`) and sysfs interfaces that are unique to ASUS hardware.
 </details>
@@ -393,7 +393,7 @@ No. The app depends on ASUS-specific kernel drivers (`asus-nb-wmi`, `asus-wmi`) 
 <details>
 <summary><strong>Why does the keyboard brightness reset after waking from sleep?</strong></summary>
 
-ASUS firmware resets keyboard RGB settings during suspend/resume. Asus Smart Charge includes a systemd sleep hook that waits 2 seconds for the firmware to finish its reset, then re-applies your saved lighting settings automatically.
+ASUS firmware resets keyboard RGB settings during suspend/resume. zhelper includes a systemd sleep hook that waits 2 seconds for the firmware to finish its reset, then re-applies your saved lighting settings automatically.
 </details>
 
 <details>
@@ -452,6 +452,12 @@ If these files don't exist, your laptop model may not expose RGB control through
 
 ---
 
+## 📄 License
+
+zhelper is licensed under the **GNU General Public License v3.0**. See the [LICENSE](LICENSE) file for the full text.
+
+---
+
 ## 🤝 Contributing
 
 Contributions are welcome! If you'd like to add support for additional ASUS models, fix bugs, or improve the UI:
@@ -476,7 +482,7 @@ Please include your ASUS laptop model and Linux distribution in bug reports.
 
 ## ⭐ Star This Project
 
-If Asus Smart Charge helps you manage your ASUS laptop on Linux, please **give it a ⭐ on GitHub** — it helps other ASUS Linux users discover the tool!
+If zhelper helps you manage your ASUS laptop on Linux, please **give it a ⭐ on GitHub** — it helps other ASUS Linux users discover the tool!
 
 ---
 
