@@ -35,8 +35,9 @@ Priority: optional
 Architecture: all
 Depends: python3, python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1, pkexec, systemd
 Maintainer: ixoz <local@localhost>
-Description: Desktop app for Asus battery charge thresholds
+Description: Desktop app for Asus laptop controls
  A GTK app and system service that manage Asus battery charge thresholds,
+ CPU maximum clock limits, fan/performance profiles, and keyboard lighting,
  including a temporary one-time 100 percent mode and automatic re-apply
  after boot or resume.
 EOF

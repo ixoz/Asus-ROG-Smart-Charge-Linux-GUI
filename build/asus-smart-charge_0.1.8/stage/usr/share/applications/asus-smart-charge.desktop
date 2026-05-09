@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Asus Smart Charge
+Comment=Manage Asus battery charge thresholds
+Exec=/usr/bin/asus-smart-charge
+Icon=battery-good-symbolic
+Terminal=false
+Categories=Settings;System;
+StartupNotify=true
