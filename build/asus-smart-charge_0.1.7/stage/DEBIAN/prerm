@@ -1,6 +1,0 @@
-#!/bin/sh
-set -e
-if [ "$1" = "remove" ]; then
-  systemctl disable --now asus-smart-charge.timer >/dev/null 2>&1 || true
-  systemctl disable asus-smart-charge.service >/dev/null 2>&1 || true
-fi
