@@ -11,6 +11,7 @@ import gi
 
 from asus_smart_charge import APP_ID, APP_NAME
 from asus_smart_charge.common import (
+    HOTSPOT_BANDS,
     KEYBOARD_LIGHTING_MODES,
     KEYBOARD_LIGHTING_SPEEDS,
     MAX_THRESHOLD,
@@ -166,7 +167,9 @@ class MainWindow(Adw.ApplicationWindow):
         self.ignore_cpu_clock_changes = False
         self.ignore_gpu_changes = False
         self.ignore_keyboard_lighting_changes = False
+        self.ignore_hotspot_changes = False
         self.keyboard_lighting_dirty = False
+        self.hotspot_dirty = False
         self.cpu_min_freq_khz: int | None = None
         self.cpu_max_freq_khz: int | None = None
         self.keyboard_max_brightness = 3
@@ -264,6 +267,29 @@ class MainWindow(Adw.ApplicationWindow):
         self.keyboard_apply_button.add_css_class("suggested-action")
         self.keyboard_apply_button.connect("clicked", self.on_keyboard_apply_clicked)
         self.keyboard_apply_button.set_sensitive(False)
+        self.hotspot_status_label = Gtk.Label(xalign=0)
+        self.hotspot_status_label.add_css_class("title-3")
+        self.hotspot_detail_label = Gtk.Label(xalign=0, wrap=True)
+        self.hotspot_detail_label.add_css_class("dim-label")
+        self.hotspot_device_box = MetricBox("Wi-Fi Device")
+        self.hotspot_uplink_box = MetricBox("Current Uplink")
+        self.hotspot_ssid_entry = Gtk.Entry()
+        self.hotspot_ssid_entry.set_placeholder_text("MICS (Milenious)")
+        self.hotspot_ssid_entry.connect("changed", self.on_hotspot_changed)
+        self.hotspot_password_entry = Gtk.Entry()
+        self.hotspot_password_entry.set_placeholder_text("At least 8 characters")
+        self.hotspot_password_entry.set_visibility(False)
+        self.hotspot_password_entry.connect("changed", self.on_hotspot_changed)
+        self.hotspot_band_combo = Gtk.ComboBoxText()
+        for band in HOTSPOT_BANDS:
+            label = "2.4 GHz" if band == "2.4ghz" else "5 GHz"
+            self.hotspot_band_combo.append(band, label)
+        self.hotspot_band_combo.connect("changed", self.on_hotspot_changed)
+        self.hotspot_start_button = Gtk.Button(label="Start / Update Hotspot")
+        self.hotspot_start_button.add_css_class("suggested-action")
+        self.hotspot_start_button.connect("clicked", self.on_hotspot_start_clicked)
+        self.hotspot_stop_button = Gtk.Button(label="Stop Hotspot")
+        self.hotspot_stop_button.connect("clicked", self.on_hotspot_stop_clicked)
         self._load_keyboard_color_palettes()
 
         toolbar = Adw.ToolbarView()
@@ -288,15 +314,18 @@ class MainWindow(Adw.ApplicationWindow):
         fan_nav = self.create_nav_button("fan", "weather-windy-symbolic", "Fan")
         gpu_nav = self.create_nav_button("gpu", "video-display-symbolic", "GPU")
         keyboard_nav = self.create_nav_button("keyboard", "input-keyboard-symbolic", "Keyboard")
+        hotspot_nav = self.create_nav_button("hotspot", "network-wireless-hotspot-symbolic", "Hotspot")
         cpu_nav.set_group(battery_nav)
         fan_nav.set_group(battery_nav)
         gpu_nav.set_group(battery_nav)
         keyboard_nav.set_group(battery_nav)
+        hotspot_nav.set_group(battery_nav)
         nav.append(battery_nav)
         nav.append(cpu_nav)
         nav.append(fan_nav)
         nav.append(gpu_nav)
         nav.append(keyboard_nav)
+        nav.append(hotspot_nav)
 
         nav_scroll = Gtk.ScrolledWindow()
         nav_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.NEVER)
@@ -542,11 +571,70 @@ class MainWindow(Adw.ApplicationWindow):
 
         keyboard_page.append(keyboard_group)
 
+        hotspot_page = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+
+        hotspot_hero = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        hotspot_title = Gtk.Label(label="MICS (Milenious) Hotspot", xalign=0)
+        hotspot_title.add_css_class("title-1")
+        hotspot_hero.append(hotspot_title)
+        hotspot_hero.append(self.hotspot_status_label)
+        hotspot_hero.append(self.hotspot_detail_label)
+        hotspot_page.append(hotspot_hero)
+
+        hotspot_metrics_group = Adw.PreferencesGroup(title="Status")
+        hotspot_metrics_row = Adw.PreferencesRow()
+        hotspot_metrics_outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        hotspot_metrics_outer.set_margin_top(12)
+        hotspot_metrics_outer.set_margin_bottom(12)
+        hotspot_metrics_outer.set_margin_start(12)
+        hotspot_metrics_outer.set_margin_end(12)
+        hotspot_metrics = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        hotspot_metrics.set_homogeneous(True)
+        hotspot_metrics.append(self.hotspot_device_box)
+        hotspot_metrics.append(self.hotspot_uplink_box)
+        hotspot_metrics_outer.append(hotspot_metrics)
+        hotspot_metrics_row.set_child(hotspot_metrics_outer)
+        hotspot_metrics_group.add(hotspot_metrics_row)
+        hotspot_page.append(hotspot_metrics_group)
+
+        hotspot_group = Adw.PreferencesGroup(title="Configuration")
+        hotspot_group.set_description(
+            "Use your laptop like a Wi-Fi extender when the adapter and driver support hotspot plus Wi-Fi client mode."
+        )
+
+        ssid_row = Adw.ActionRow(title="Wi-Fi Name", subtitle="Visible hotspot name for phones and other devices.")
+        ssid_row.add_suffix(self.hotspot_ssid_entry)
+        hotspot_group.add(ssid_row)
+
+        password_row = Adw.ActionRow(title="Password", subtitle="Must be between 8 and 63 characters.")
+        password_row.add_suffix(self.hotspot_password_entry)
+        hotspot_group.add(password_row)
+
+        band_row = Adw.ActionRow(title="Frequency", subtitle="Choose whether the hotspot should use 2.4 GHz or 5 GHz.")
+        band_row.add_suffix(self.hotspot_band_combo)
+        hotspot_group.add(band_row)
+
+        start_row = Adw.ActionRow(
+            title="Start Or Update",
+            subtitle="Applies the current Wi-Fi name, password, and band, then asks NetworkManager to enable the hotspot.",
+        )
+        start_row.add_suffix(self.hotspot_start_button)
+        hotspot_group.add(start_row)
+
+        stop_row = Adw.ActionRow(
+            title="Stop",
+            subtitle="Turns off the hotspot connection managed by this app.",
+        )
+        stop_row.add_suffix(self.hotspot_stop_button)
+        hotspot_group.add(stop_row)
+        hotspot_page.append(hotspot_group)
+
         stack.add_named(battery_page, "battery")
         stack.add_named(cpu_page, "cpu")
         stack.add_named(fan_page, "fan")
         stack.add_named(gpu_page, "gpu")
         stack.add_named(keyboard_page, "keyboard")
+        stack.add_named(hotspot_page, "hotspot")
         shell.append(stack)
         shell.append(self.message_label)
         self.show_page("battery")
@@ -635,6 +723,7 @@ class MainWindow(Adw.ApplicationWindow):
         thermal_profile = status.get("thermal_profile", {})
         gpu = status.get("gpu", {})
         keyboard_lighting = status.get("keyboard_lighting", {})
+        hotspot = status.get("hotspot", {})
 
         self.selected_threshold = selected
         self.temporary_charge_target = temporary_charge_target if temporary_full else None
@@ -681,6 +770,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.update_cpu_clock_status(cpu_clock)
         self.update_gpu_status(gpu)
         self.update_keyboard_lighting_status(keyboard_lighting)
+        self.update_hotspot_status(hotspot)
 
     def refresh_keyboard_lighting_status(self) -> None:
         try:
@@ -1101,6 +1191,96 @@ class MainWindow(Adw.ApplicationWindow):
         self.keyboard_apply_button.set_sensitive(False)
         self.refresh_status()
         self.message_label.set_label("Keyboard lighting updated.")
+
+    def update_hotspot_status(self, hotspot: dict) -> None:
+        supported = hotspot.get("supported", False)
+        active = hotspot.get("active", False)
+        can_start = hotspot.get("can_start", supported)
+        blocked_reason = hotspot.get("blocked_reason")
+        wifi_device = hotspot.get("wifi_device")
+        upstream_connection = hotspot.get("upstream_connection")
+        upstream_device = hotspot.get("upstream_device")
+        ssid = hotspot.get("ssid") or hotspot.get("saved_ssid") or "MICS (Milenious)"
+        password = hotspot.get("password") or hotspot.get("saved_password") or "12345678"
+        band = hotspot.get("band") or hotspot.get("saved_band") or "2.4ghz"
+        detail = hotspot.get("detail") or ""
+
+        if not self.hotspot_dirty:
+            self.ignore_hotspot_changes = True
+            self.hotspot_ssid_entry.set_text(ssid)
+            self.hotspot_password_entry.set_text(password)
+            self.hotspot_band_combo.set_active_id(band)
+            self.ignore_hotspot_changes = False
+
+        self.hotspot_start_button.set_sensitive(supported and can_start)
+        self.hotspot_stop_button.set_sensitive(supported and active)
+        self.hotspot_ssid_entry.set_sensitive(supported)
+        self.hotspot_password_entry.set_sensitive(supported)
+        self.hotspot_band_combo.set_sensitive(supported)
+
+        if not supported:
+            self.hotspot_status_label.set_label("Hotspot control is unavailable")
+            self.hotspot_detail_label.set_label(detail or "NetworkManager did not expose a usable Wi-Fi adapter.")
+            self.hotspot_device_box.set_metric("unavailable", "No managed Wi-Fi device")
+            self.hotspot_uplink_box.set_metric("unavailable", "No active Wi-Fi uplink")
+            return
+
+        if not can_start and blocked_reason:
+            self.hotspot_status_label.set_label("Extender mode blocked")
+            self.hotspot_detail_label.set_label(detail or blocked_reason)
+            self.hotspot_device_box.set_metric(wifi_device or "unknown", "Adapter used for hotspot control")
+            self.hotspot_uplink_box.set_metric(
+                upstream_connection or "No active Wi-Fi",
+                upstream_device or "No upstream device",
+            )
+            return
+
+        self.hotspot_status_label.set_label(f"Hotspot {'running' if active else 'ready'}")
+        self.hotspot_detail_label.set_label(detail)
+        self.hotspot_device_box.set_metric(wifi_device or "unknown", "Adapter used for hotspot control")
+        self.hotspot_uplink_box.set_metric(
+            upstream_connection or "No active Wi-Fi",
+            upstream_device or "No upstream device",
+        )
+
+    def on_hotspot_changed(self, *_args) -> None:
+        if self.ignore_hotspot_changes:
+            return
+        self.hotspot_dirty = True
+
+    def on_hotspot_start_clicked(self, _button: Gtk.Button) -> None:
+        ssid = self.hotspot_ssid_entry.get_text().strip()
+        password = self.hotspot_password_entry.get_text()
+        band = self.hotspot_band_combo.get_active_id() or "2.4ghz"
+        try:
+            self.run_helper(
+                "set-hotspot",
+                "--ssid",
+                ssid,
+                "--password",
+                password,
+                "--band",
+                band,
+                require_root=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            self.show_error(exc.stderr.strip() or "Failed to start the hotspot.")
+            self.refresh_status()
+            return
+        self.hotspot_dirty = False
+        self.refresh_status()
+        self.message_label.set_label(f"Hotspot updated: {ssid} ({'2.4 GHz' if band == '2.4ghz' else '5 GHz'}).")
+
+    def on_hotspot_stop_clicked(self, _button: Gtk.Button) -> None:
+        try:
+            self.run_helper("stop-hotspot", require_root=True)
+        except subprocess.CalledProcessError as exc:
+            self.show_error(exc.stderr.strip() or "Failed to stop the hotspot.")
+            self.refresh_status()
+            return
+        self.hotspot_dirty = False
+        self.refresh_status()
+        self.message_label.set_label("Hotspot stopped.")
 
     def _refresh_tick(self) -> bool:
         self.refresh_status()

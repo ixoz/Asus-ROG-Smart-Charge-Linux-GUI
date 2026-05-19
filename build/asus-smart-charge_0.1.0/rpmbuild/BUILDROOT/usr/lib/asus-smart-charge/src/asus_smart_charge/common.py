@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +24,8 @@ TEMP_FULL_RESET_AT = 99
 THERMAL_PROFILES = ("silent", "balanced", "turbo")
 KEYBOARD_LIGHTING_MODES = ("static", "rainbow", "flashing", "glow")
 KEYBOARD_LIGHTING_SPEEDS = ("slow", "medium", "fast")
+HOTSPOT_BANDS = ("2.4ghz", "5ghz")
+HOTSPOT_CONNECTION_NAME = "asus-smart-charge-hotspot"
 KEYBOARD_LIGHTING_MODE_MAP = {
     "static": 0,
     "glow": 1,
@@ -103,6 +107,23 @@ class KeyboardLightingStatus:
     selected_speed: str | None
 
 
+@dataclass
+class HotspotStatus:
+    supported: bool
+    active: bool
+    wifi_device: str | None
+    upstream_device: str | None
+    upstream_connection: str | None
+    ssid: str | None
+    password: str | None
+    band: str | None
+    saved_ssid: str | None
+    saved_password: str | None
+    saved_band: str | None
+    concurrent_supported: bool | None
+    detail: str
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -125,6 +146,9 @@ def default_state() -> dict:
         "keyboard_rgb_color": "#ffffff",
         "keyboard_rgb_speed": "medium",
         "last_applied_keyboard_lighting": None,
+        "hotspot_ssid": "MICS (Milenious)",
+        "hotspot_password": "12345678",
+        "hotspot_band": "2.4ghz",
         "last_updated_at": None,
     }
 
@@ -160,6 +184,9 @@ def load_state() -> dict:
     if state.get("keyboard_rgb_speed") not in KEYBOARD_LIGHTING_SPEEDS:
         raise ValueError(f"Unsupported keyboard lighting speed in state: {state.get('keyboard_rgb_speed')}")
     validate_hex_color(str(state.get("keyboard_rgb_color", "#ffffff")))
+    state["hotspot_ssid"] = validate_hotspot_ssid(str(state.get("hotspot_ssid", "MICS (Milenious)")))
+    state["hotspot_password"] = validate_hotspot_password(str(state.get("hotspot_password", "12345678")))
+    state["hotspot_band"] = validate_hotspot_band(str(state.get("hotspot_band", "2.4ghz")))
     return state
 
 
@@ -206,6 +233,14 @@ def _read_text(path: Path) -> str | None:
         return path.read_text(encoding="utf-8").strip()
     except (FileNotFoundError, OSError):
         return None
+
+
+def _run_command(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, capture_output=True, text=True, check=True)
+
+
+def _command_exists(name: str) -> bool:
+    return shutil.which(name) is not None
 
 
 def read_battery_status() -> BatteryStatus:
@@ -418,6 +453,189 @@ def validate_hex_color(color: str) -> str:
     except ValueError as exc:
         raise ValueError("Keyboard color must use #rrggbb format.") from exc
     return color.lower()
+
+
+def validate_hotspot_ssid(ssid: str) -> str:
+    ssid = ssid.strip()
+    if not ssid:
+        raise ValueError("Hotspot name cannot be empty.")
+    if len(ssid.encode("utf-8")) > 32:
+        raise ValueError("Hotspot name must be 32 bytes or less.")
+    return ssid
+
+
+def validate_hotspot_password(password: str) -> str:
+    if len(password) < 8 or len(password) > 63:
+        raise ValueError("Hotspot password must be between 8 and 63 characters.")
+    return password
+
+
+def validate_hotspot_band(band: str) -> str:
+    if band not in HOTSPOT_BANDS:
+        raise ValueError(f"Hotspot band must be one of {HOTSPOT_BANDS}.")
+    return band
+
+
+def _nmcli_connection_exists(name: str) -> bool:
+    if not _command_exists("nmcli"):
+        return False
+    try:
+        completed = _run_command("nmcli", "-t", "-f", "NAME", "connection", "show")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+    return name in {line.strip() for line in completed.stdout.splitlines() if line.strip()}
+
+
+def _nmcli_get(field: str, *args: str) -> str | None:
+    try:
+        completed = _run_command("nmcli", "--get-values", field, *args)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    value = completed.stdout.strip()
+    return value or None
+
+
+def _find_wifi_device() -> str | None:
+    if not _command_exists("nmcli"):
+        return None
+    try:
+        completed = _run_command("nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    preferred: str | None = None
+    for line in completed.stdout.splitlines():
+        parts = line.split(":")
+        if len(parts) < 3 or parts[1] != "wifi":
+            continue
+        device = parts[0].strip()
+        state = parts[2].strip()
+        if state == "connected":
+            return device
+        if preferred is None:
+            preferred = device
+    return preferred
+
+
+def _read_upstream_wifi() -> tuple[str | None, str | None]:
+    if not _command_exists("nmcli"):
+        return None, None
+    try:
+        completed = _run_command("nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device", "status")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None, None
+    for line in completed.stdout.splitlines():
+        parts = line.split(":")
+        if len(parts) < 4 or parts[1] != "wifi" or parts[2] != "connected":
+            continue
+        return parts[0].strip() or None, parts[3].strip() or None
+    return None, None
+
+
+def _hotspot_band_to_nm(band: str) -> str:
+    return "bg" if band == "2.4ghz" else "a"
+
+
+def _hotspot_band_from_nm(band: str | None) -> str | None:
+    if band == "bg":
+        return "2.4ghz"
+    if band == "a":
+        return "5ghz"
+    return None
+
+
+def _connection_uses_ap_mode(name: str) -> bool:
+    mode = _nmcli_get("802-11-wireless.mode", "connection", "show", name)
+    return mode == "ap"
+
+
+def _hotspot_concurrent_supported() -> bool | None:
+    if not _command_exists("iw"):
+        return None
+    try:
+        completed = _run_command("iw", "list")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    lines = completed.stdout.splitlines()
+    in_combinations = False
+    for raw_line in lines:
+        line = raw_line.strip()
+        if line.startswith("valid interface combinations:"):
+            in_combinations = True
+            continue
+        if in_combinations and raw_line and not raw_line.startswith("\t") and not raw_line.startswith(" "):
+            break
+        if in_combinations and "AP" in line and "managed" in line:
+            return True
+    if " AP" in completed.stdout and " managed" in completed.stdout:
+        return False
+    return None
+
+
+def read_hotspot_status(state: dict | None = None) -> HotspotStatus:
+    state = state or load_state()
+    saved_ssid = state.get("hotspot_ssid")
+    saved_password = state.get("hotspot_password")
+    saved_band = state.get("hotspot_band")
+    if not _command_exists("nmcli"):
+        return HotspotStatus(
+            supported=False,
+            active=False,
+            wifi_device=None,
+            upstream_device=None,
+            upstream_connection=None,
+            ssid=None,
+            password=None,
+            band=None,
+            saved_ssid=saved_ssid,
+            saved_password=saved_password,
+            saved_band=saved_band,
+            concurrent_supported=None,
+            detail="NetworkManager (nmcli) is not installed.",
+        )
+
+    wifi_device = _find_wifi_device()
+    upstream_device, upstream_connection = _read_upstream_wifi()
+    active = False
+    ssid = None
+    password = None
+    band = None
+    detail = "Create a Wi-Fi hotspot that can share your laptop internet connection."
+
+    if _nmcli_connection_exists(HOTSPOT_CONNECTION_NAME):
+        active_connections = _nmcli_get("NAME", "connection", "show", "--active")
+        active_names = set(active_connections.splitlines()) if active_connections else set()
+        active = HOTSPOT_CONNECTION_NAME in active_names and _connection_uses_ap_mode(HOTSPOT_CONNECTION_NAME)
+        ssid = _nmcli_get("802-11-wireless.ssid", "connection", "show", HOTSPOT_CONNECTION_NAME)
+        password = _nmcli_get("802-11-wireless-security.psk", "connection", "show", HOTSPOT_CONNECTION_NAME)
+        band = _hotspot_band_from_nm(_nmcli_get("802-11-wireless.band", "connection", "show", HOTSPOT_CONNECTION_NAME))
+
+    concurrent_supported = _hotspot_concurrent_supported()
+    if concurrent_supported is False:
+        detail = (
+            "This adapter may not support staying on Wi-Fi and broadcasting a hotspot at the same time. "
+            "The hotspot can still be tried, but the current Wi-Fi link may disconnect."
+        )
+    elif concurrent_supported is True:
+        detail = (
+            "This adapter reports AP + client combinations, so Windows-style Wi-Fi sharing has a better chance "
+            "of working if the driver behaves well."
+        )
+
+    return HotspotStatus(
+        supported=wifi_device is not None,
+        active=active,
+        wifi_device=wifi_device,
+        upstream_device=upstream_device,
+        upstream_connection=upstream_connection,
+        ssid=ssid,
+        password=password,
+        band=band,
+        saved_ssid=saved_ssid,
+        saved_password=saved_password,
+        saved_band=saved_band,
+        concurrent_supported=concurrent_supported,
+        detail=detail if wifi_device is not None else "No Wi-Fi adapter was detected by NetworkManager.",
+    )
 
 
 def read_thermal_profile_status() -> ThermalProfileStatus:

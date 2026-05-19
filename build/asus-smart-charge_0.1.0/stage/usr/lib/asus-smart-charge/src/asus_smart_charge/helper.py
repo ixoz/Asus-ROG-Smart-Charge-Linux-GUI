@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -12,6 +13,7 @@ from asus_smart_charge.common import (
     ASUS_THERMAL_POLICY_MAP,
     ASUS_THERMAL_POLICY_PATH,
     DGPU_DISABLE_PATH,
+    HOTSPOT_CONNECTION_NAME,
     KBD_BACKLIGHT_PATH,
     KEYBOARD_LIGHTING_MODE_MAP,
     KEYBOARD_LIGHTING_SPEED_MAP,
@@ -27,6 +29,7 @@ from asus_smart_charge.common import (
     read_cpu_clock_status,
     read_fan_speed_status,
     read_gpu_status,
+    read_hotspot_status,
     read_keyboard_lighting_status,
     read_thermal_profile_status,
     save_state,
@@ -35,6 +38,9 @@ from asus_smart_charge.common import (
     validate_cpu_max_freq,
     validate_dgpu_enabled,
     validate_hex_color,
+    validate_hotspot_band,
+    validate_hotspot_password,
+    validate_hotspot_ssid,
     validate_keyboard_brightness,
     validate_keyboard_mode,
     validate_keyboard_speed,
@@ -184,6 +190,116 @@ def _keyboard_lighting_payload(state: dict) -> dict:
     }
 
 
+def _hotspot_payload(state: dict) -> dict:
+    status = read_hotspot_status(state)
+    return {
+        "supported": status.supported,
+        "active": status.active,
+        "wifi_device": status.wifi_device,
+        "upstream_device": status.upstream_device,
+        "upstream_connection": status.upstream_connection,
+        "ssid": status.ssid,
+        "password": status.password,
+        "band": status.band,
+        "saved_ssid": status.saved_ssid,
+        "saved_password": status.saved_password,
+        "saved_band": status.saved_band,
+        "concurrent_supported": status.concurrent_supported,
+        "detail": status.detail,
+    }
+
+
+def _hotspot_connection_exists() -> bool:
+    completed = subprocess.run(
+        ["nmcli", "-t", "-f", "NAME", "connection", "show"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return HOTSPOT_CONNECTION_NAME in {line.strip() for line in completed.stdout.splitlines() if line.strip()}
+
+
+def _write_hotspot(ssid: str, password: str, band: str) -> None:
+    ssid = validate_hotspot_ssid(ssid)
+    password = validate_hotspot_password(password)
+    band = validate_hotspot_band(band)
+    status = read_hotspot_status()
+    if not status.supported or not status.wifi_device:
+        raise FileNotFoundError("No Wi-Fi adapter managed by NetworkManager is available for hotspot mode.")
+
+    nm_band = "bg" if band == "2.4ghz" else "a"
+    base_add_command = [
+        "nmcli",
+        "connection",
+        "add",
+        "type",
+        "wifi",
+        "ifname",
+        status.wifi_device,
+        "con-name",
+        HOTSPOT_CONNECTION_NAME,
+        "ssid",
+        ssid,
+    ]
+    if read_hotspot_status().active:
+        subprocess.run(
+            ["nmcli", "connection", "down", HOTSPOT_CONNECTION_NAME],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+    if not _hotspot_connection_exists():
+        subprocess.run(base_add_command, check=True, capture_output=True, text=True)
+
+    subprocess.run(
+        [
+            "nmcli",
+            "connection",
+            "modify",
+            HOTSPOT_CONNECTION_NAME,
+            "connection.interface-name",
+            status.wifi_device,
+            "802-11-wireless.mode",
+            "ap",
+            "802-11-wireless.ssid",
+            ssid,
+            "802-11-wireless.band",
+            nm_band,
+            "802-11-wireless-security.key-mgmt",
+            "wpa-psk",
+            "802-11-wireless-security.psk",
+            password,
+            "ipv4.method",
+            "shared",
+            "ipv6.method",
+            "ignore",
+            "connection.autoconnect",
+            "no",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["nmcli", "connection", "up", HOTSPOT_CONNECTION_NAME, "ifname", status.wifi_device],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _stop_hotspot() -> None:
+    if not _hotspot_connection_exists():
+        return
+    subprocess.run(
+        ["nmcli", "connection", "down", HOTSPOT_CONNECTION_NAME],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
 def command_status(_args: argparse.Namespace) -> int:
     state = load_state()
     battery = read_battery_status()
@@ -217,6 +333,7 @@ def command_status(_args: argparse.Namespace) -> int:
             "last_applied_enabled": state.get("last_applied_dgpu_enabled"),
         },
         "keyboard_lighting": _keyboard_lighting_payload(state),
+        "hotspot": _hotspot_payload(state),
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
@@ -309,6 +426,27 @@ def command_set_keyboard_lighting(args: argparse.Namespace) -> int:
     return command_status(args)
 
 
+def command_set_hotspot(args: argparse.Namespace) -> int:
+    _require_root()
+    ssid = validate_hotspot_ssid(args.ssid)
+    password = validate_hotspot_password(args.password)
+    band = validate_hotspot_band(args.band)
+    _write_hotspot(ssid, password, band)
+
+    state = load_state()
+    state["hotspot_ssid"] = ssid
+    state["hotspot_password"] = password
+    state["hotspot_band"] = band
+    save_state(state)
+    return command_status(args)
+
+
+def command_stop_hotspot(args: argparse.Namespace) -> int:
+    _require_root()
+    _stop_hotspot()
+    return command_status(args)
+
+
 def command_enforce(_args: argparse.Namespace) -> int:
     _require_root()
     state = load_state()
@@ -368,6 +506,7 @@ def command_enforce(_args: argparse.Namespace) -> int:
             "last_applied_enabled": state.get("last_applied_dgpu_enabled"),
         },
         "keyboard_lighting": _keyboard_lighting_payload(state),
+        "hotspot": _hotspot_payload(state),
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
@@ -416,6 +555,15 @@ def build_parser() -> argparse.ArgumentParser:
     set_keyboard_lighting.add_argument("--color", required=True)
     set_keyboard_lighting.add_argument("--speed", choices=("slow", "medium", "fast"), required=True)
     set_keyboard_lighting.set_defaults(func=command_set_keyboard_lighting)
+
+    set_hotspot = subparsers.add_parser("set-hotspot", help="Create or update a Wi-Fi hotspot")
+    set_hotspot.add_argument("--ssid", required=True)
+    set_hotspot.add_argument("--password", required=True)
+    set_hotspot.add_argument("--band", choices=("2.4ghz", "5ghz"), required=True)
+    set_hotspot.set_defaults(func=command_set_hotspot)
+
+    stop_hotspot = subparsers.add_parser("stop-hotspot", help="Stop the Wi-Fi hotspot")
+    stop_hotspot.set_defaults(func=command_stop_hotspot)
 
     enforce = subparsers.add_parser("enforce", help="Apply the configured threshold")
     enforce.set_defaults(func=command_enforce)
